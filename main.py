@@ -1,7 +1,11 @@
 import os
 import cv2
+import numpy
 import numpy as np
 import matplotlib.pyplot as plt
+from sklearn.cluster import KMeans
+
+sum_type = 3
 
 
 def show_SIFT(img, keypoints):
@@ -25,7 +29,7 @@ def show_SIFT(img, keypoints):
 
 # 提取 SIFT 特征
 def extract_SIFT(root):
-    features = []
+    features = np.float32([]).reshape(0, 128)
     # sift 提取器
     sift = cv2.xfeatures2d.SIFT_create()
 
@@ -39,27 +43,71 @@ def extract_SIFT(root):
                 image = cv2.imread(full_file, cv2.IMREAD_COLOR)
                 # 提取图像的 SIFT
                 keypoint, feature = sift.detectAndCompute(image, None)
-                features.append(feature)
-    return np.array(features)
+                # show_SIFT(image, keypoint)
+                features = np.append(features, feature, axis=0)
+    return features
 
 
-def K_means(features):
-    type_num = 8
+def extract_img_SIFT(root):
+    sift = cv2.xfeatures2d.SIFT_create()
+    image = cv2.imread(root, cv2.IMREAD_COLOR)
+    keypoint, feature = sift.detectAndCompute(image, None)
+    return feature
+
+
+def K_means(features, randomState=None):
     # Kmeans
-    compactness, labels, centers = cv2.kmeans(features,
-                                              type_num,
-                                              None,
-                                              (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 0.1),
-                                              20,
-                                              cv2.KMEANS_RANDOM_CENTERS)
-    return centers
+    kMeans = KMeans(n_clusters=sum_type, random_state=randomState)
+    kMeans.fit(features)
+    return kMeans.labels_, kMeans.cluster_centers_
+
+
+def calcFeatVec(features, centers, type):
+    featVec = np.zeros((1, sum_type))
+    for i in range(0, features.shape[0]):
+        fi = features[i]
+        diffMat = np.tile(fi, (sum_type, 1)) - centers
+        # sqSum = (diffMat ** 2).sum(axis=1)
+        if type == 'l2':
+            diffMat = diffMat ** 2
+        sqSum = diffMat.sum(axis=1)
+        dist = sqSum
+        sortedIndices = dist.argsort()
+        idx = sortedIndices[0]
+        featVec[0][idx] += 1
+    return featVec
 
 
 if __name__ == '__main__':
     features = extract_SIFT(r'D:\Learn\Vision Introduction\dataset')
-    centers = K_means(features)
-    print('end')
+    _, centers = K_means(features)
 
-    # print("Hello")
-    # sift = cv2.xfeatures2d.SIFT_create()  # 构建SIFT特征点检测器对象
-    # keypoints = sift.detect('GRAY', None)  # 用SIFT特征点检测器对象检测灰度图中的特征点
+    root = r'test'
+    s = {}
+    for img in os.listdir(root):
+        img_type = img[:-5]
+        full_file = os.path.join(root, img)
+        feature = extract_img_SIFT(full_file)
+        featVec = calcFeatVec(feature, centers, 'l2')
+        s[numpy.argmax(featVec)] = img_type
+        image = cv2.imread(full_file, cv2.IMREAD_COLOR)
+    print(s)
+
+    for img in os.listdir(root):
+        img_type = img[:-5]
+        full_file = os.path.join(root, img)
+        feature = extract_img_SIFT(full_file)
+        featVec = calcFeatVec(feature, centers, 'l1')
+        print("label is {0}, pre_label is {1}".format(img_type, s[numpy.argmax(featVec)]))
+        image = cv2.imread(full_file, cv2.IMREAD_COLOR)
+
+    for img in os.listdir(root):
+        img_type = img[:-5]
+        full_file = os.path.join(root, img)
+        feature = extract_img_SIFT(full_file)
+        featVec = calcFeatVec(feature, centers, 'l2')
+        print("label is {0}, pre_label is {1}".format(img_type, s[numpy.argmax(featVec)]))
+
+        image = cv2.imread(full_file, cv2.IMREAD_COLOR)
+
+    print('end')
